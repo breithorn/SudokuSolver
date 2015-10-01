@@ -1,0 +1,646 @@
+<html>
+
+<!--
+	Created in 2005 by Carl Fredrik Abelson. Licensed under 
+	GNU General Public License (GPL). This game is 
+	written entirely in DHTML and JavaScript. It has been 
+	tested on Internet Explorer 5+ and Mozilla Firefox.	Drop 
+	me a line on abelson@ieee.org and tell me what you think 
+	of it.
+-->
+
+<head>
+	<title>Sudoku Solver</title>
+	<style>
+		body {
+			background-color: ghostwhite;
+			color: steelblue;
+			font-family: Arial;
+			font-size: 9pt;
+			margin: 20px;
+		}
+		h1 {
+			font-family: Arial;
+			font-size: 24pt;
+		}
+		button {
+			width: 75px;
+			height: 23px;
+			font-size: 8pt;
+		}
+		small {
+			font-size: 8pt;
+			font-style: italic;
+		}
+		a {
+			color: orange;
+			text-decoration: none;
+		}
+		a:hover {
+			text-decoration: underline;
+		}
+		input.cell {
+			width: 25px;
+			text-align: center;
+			font-weight: bold;
+			color: black;
+		}
+		select {
+			font-size: 8pt;
+		}
+		label {
+			color: black;
+			font-size: 8pt;
+		}
+		#debug_table {
+			font-family: Courier New, Courier;
+			font-size: 8pt;
+		}
+		#debug_table td {
+			font-family: Courier New, Courier;
+			font-size: 8pt;
+		}
+		.todo {
+			font-family: Arial;
+			font-size: 8pt;
+			color: lightsteelblue;
+		}
+	</style>
+	<script>
+		var debug = false;
+
+		function init()
+		{
+			createBoard(document.getElementById("container_problem"), "board");
+		}
+		function createBoard(parent_component, board_name)
+		{
+			var main_board = document.createElement("table");
+			main_board.cellSpacing = 0;
+			main_board.cellPadding = 5;
+			main_board.border = 1;
+			main_board.id = board_name;
+			parent_component.appendChild(main_board);
+
+			for (var i = 0; i < 3; i++) {
+				var main_row = main_board.insertRow(-1);
+				for (var j = 0; j < 3; j++) {
+					var main_cell = main_row.insertCell(-1);
+					var region = document.createElement("table");
+					region.cellSpacing = 0;
+					region.cellPadding = 3;
+					for (var y = 0; y < 3; y++) {
+						var row = region.insertRow(-1);
+						for (var x = 0; x < 3; x++) {
+							var cell = row.insertCell(-1);
+							cell.innerHTML = "<input type='text' maxlength='1' class='cell'/>";
+						}
+					}
+					main_cell.appendChild(region);
+				}
+			}
+		}
+		function resetBoard()
+		{
+			document.getElementById("title_problem").style.display = "none";
+			document.getElementById("title_solution").style.display = "none";
+			document.getElementById("container_solution").style.display = "none";
+			document.getElementById("container_solution").innerHTML = "";
+			closeImportPanel();
+			document.getElementById("sample").selectedIndex = 0;
+			if (debug) hideDebug();
+
+			var board = document.getElementById("board");
+			var cells = board.getElementsByTagName("input");
+			for (var i = 0; i < cells.length; i++) {
+				cells[i].value = "";
+			}
+		}
+		function showSample()
+		{
+			var rows = new Array(9);
+			var i = document.getElementById("sample").selectedIndex;
+			if (i == 1)
+			{
+				rows[0] = "53  7    ";
+				rows[1] = "6  195   ";
+				rows[2] = " 98    6 ";
+				rows[3] = "8   6   3";
+				rows[4] = "4  8 3  1";
+				rows[5] = "7   2   6";
+				rows[6] = " 6    28 ";
+				rows[7] = "   419  5";
+				rows[8] = "    8  79";
+			}
+			else if (i == 2)
+			{
+				rows[0] = "  18 63  ";
+				rows[1] = "6 5 9 2 8";
+				rows[2] = "8   4   6";
+				rows[3] = "   3 9   ";
+				rows[4] = "13     92";
+				rows[5] = "   2 8   ";
+				rows[6] = "9   3   7";
+				rows[7] = "2 8 7 1 5";
+				rows[8] = "  76 54  ";
+			}
+			else if (i == 3)
+			{
+				rows[0] = " 4      2";
+				rows[1] = " 6   2 7 ";
+				rows[2] = "  9  7  6";
+				rows[3] = "  2      ";
+				rows[4] = "7 19264 8";
+				rows[5] = "      7  ";
+				rows[6] = "5  1  8  ";
+				rows[7] = " 7 8   1 ";
+				rows[8] = "3      5 ";
+			}
+			else if (i == 4)
+			{
+				rows[0] = "7   82   ";
+				rows[1] = "  2      ";
+				rows[2] = "35 7   1 ";
+				rows[3] = "96 2  1  ";
+				rows[4] = " 3     4 ";
+				rows[5] = "  1  9 68";
+				rows[6] = " 8   4 76";
+				rows[7] = "      5  ";
+				rows[8] = "   61   3";
+			}
+			else if (i == 5)
+			{
+				rows[0] = "  9      ";
+				rows[1] = "78   6   ";
+				rows[2] = " 6    175";
+				rows[3] = "892 4    ";
+				rows[4] = "   2 7   ";
+				rows[5] = "    5 923";
+				rows[6] = "951    4 ";
+				rows[7] = "   3   91";
+				rows[8] = "      8  ";
+			}
+			populateBoardWithSample(rows);
+		}
+		function populateBoardWithSample(rows)
+		{
+			var board = document.getElementById("board");
+			var region_tables = board.getElementsByTagName("table");
+			for (var region = 0; region < 9; region++) {
+				var cells = region_tables[region].getElementsByTagName("input");
+				var startx = 3 * (region % 3);
+				var starty = 3 * Math.floor(region / 3);
+				for (var y = 0; y < 3; y++) {
+					for (var x = 0; x < 3; x++) {
+						var value = rows[starty+y].substr(startx+x,1);
+						value = (value == " ") ? "" : value;
+						cells[x+3*y].value = value;
+					}
+				}
+			}
+		}
+		function showImportPanel()
+		{
+			document.getElementById("title_problem").style.display = "none";
+			document.getElementById("title_solution").style.display = "none";
+			document.getElementById("container_solution").style.display = "none";
+
+			document.getElementById("container_import").style.display = "block";
+			document.getElementById("board_to_import").value = "";
+			document.getElementById("board_to_import").focus();
+		}
+		function closeImportPanel()
+		{
+			document.getElementById("container_import").style.display = "none";
+			document.getElementById("board_to_import").value = "";
+		}
+		function importBoard()
+		{
+			var s = document.getElementById("board_to_import").value;
+			var rows = s.split("\n");
+			populateBoardWithSample(rows);
+			closeImportPanel();
+		}
+		function isValidNumber(s)
+		{
+			var valid_values = new Array(1,2,3,4,5,6,7,8,9);
+			var valid = false;
+			for (var i = 0; i < valid_values.length; i++) {
+				if (s == valid_values[i]) {
+					valid = true;
+					break;
+				}
+			}
+			return valid;
+		}
+		function solve()
+		{
+			debug = document.getElementById("debug_mode").checked;
+			if (debug) {
+				initDebug();
+			} else {
+				hideDebug();
+			}
+			document.getElementById("container_solution").innerHTML = "";
+			closeImportPanel();
+
+			// Create the cell-array
+			var cells = new Array(9);
+			for (var x = 0; x < 9; x++) {
+				cells[x] = new Array(9);
+				for (var y = 0; y < 9; y++) {
+					cells[x][y] = "";
+				}
+			}
+
+			// Check the values
+			var board = document.getElementById("board");
+			var regions = board.getElementsByTagName("table");
+			for (var i = 0; i < regions.length; i++) {
+				var input_elements = regions[i].getElementsByTagName("input");
+				for (var j = 0; j < input_elements.length; j++) {
+					var value = input_elements[j].value;
+					if (!isValidNumber(value) && (value != "")) {
+						alert("Only numbers and empty cells are allowed.");
+						input_elements[j].focus();
+						return;
+					}
+				}
+			}
+
+			// Populate the cell-array
+			for (var i = 0; i < regions.length; i++) {
+				var input_elements = regions[i].getElementsByTagName("input");
+				var x = 3 * (i % 3);
+				var y = 3 * Math.floor(i / 3);
+				cells[x+0][y+0] = input_elements[0].value;
+				cells[x+1][y+0] = input_elements[1].value;
+				cells[x+2][y+0] = input_elements[2].value;
+				cells[x+0][y+1] = input_elements[3].value;
+				cells[x+1][y+1] = input_elements[4].value;
+				cells[x+2][y+1] = input_elements[5].value;
+				cells[x+0][y+2] = input_elements[6].value;
+				cells[x+1][y+2] = input_elements[7].value;
+				cells[x+2][y+2] = input_elements[8].value;
+			}
+
+			// Print the grid model
+			if (debug) {
+				debugPrint("Copy of the board:");
+				debugPrintCells(cells);
+			}
+
+			var index = 0;
+			var success = false;
+			var number_blanks = getNumberBlanks(cells);
+
+			while (number_blanks > 0) {
+				index++;
+
+				if (debug) {
+					debugPrint("--------------------------------------------------");
+					debugPrint("*** Round " + index + "***");
+				}
+
+				// Create the possibilities-array
+				var possibilities = new Array(9);
+				for (var x = 0; x < 9; x++) {
+					possibilities[x] = new Array(9);
+					for (var y = 0; y < 9; y++) {
+						possibilities[x][y] = "";
+					}
+				}
+
+				// Calculate the possibilities
+				for (var y = 0; y < 9; y++) {
+					for (var x = 0; x < 9; x++) {
+						if (cells[x][y] == "") {
+							var numbers = new Array(true,true,true,true,true,true,true,true,true);
+
+							// Check x-values
+							for (var i = 0; i < 9; i++) {
+								var value = cells[i][y];
+								if (value != "") {
+									numbers[value-1] = false;
+								}
+							}
+
+							// Check y-values
+							for (var i = 0; i < 9; i++) {
+								var value = cells[x][i];
+								if (value != "") {
+									numbers[value-1] = false;
+								}
+							}
+
+							// Check the region
+							var startx = 3 * Math.floor(x / 3);
+							var starty = 3 * Math.floor(y / 3);
+							for (var ry = 0; ry < 3; ry++) {
+								for (var rx = 0; rx < 3; rx++) {
+									var value = cells[startx+rx][starty+ry];
+									if (value != "") {
+										numbers[value-1] = false;
+									}
+								}
+							}
+
+							// Add the possible numbers
+							for (var i = 0; i < 9; i++) {
+								if (numbers[i]) {
+									possibilities[x][y] += ((i+1) + ",");
+								}
+							}
+							if (possibilities[x][y] != "") {
+								possibilities[x][y] = possibilities[x][y].substring(0, possibilities[x][y].length - 1);
+							}
+						} else {
+							possibilities[x][y] = "";
+						}
+					}
+				}
+
+				if (debug) {
+					debugPrint("Possible numbers for each cell:");
+					debugPrintCells(possibilities);
+					debugPrint("Looking for cells with only one possible number.");
+				}
+
+				// Populate cells with only one possibility
+				var number_found = 0;
+				for (var y = 0; y < 9; y++) {
+					for (var x = 0; x < 9; x++) {
+						if (possibilities[x][y].length == 1) {
+							cells[x][y] = possibilities[x][y];
+							possibilities[x][y] = "";
+							number_found++;
+						}
+					}
+				}
+
+				if (debug) {
+					debugPrint("Populated " + number_found + " cells since they had only one possibility.");
+					debugPrint("Now the board looks like this:");
+					debugPrintCells(cells);
+				}
+
+				// Check for numbers that only can be at one place in a region
+				var number_single = 0;
+				number_blanks = getNumberBlanks(cells);
+				if ((number_blanks > 0) && (number_found == 0)) {
+					if (debug) {
+						debugPrint("Number of blank cells: " + number_blanks);
+						debugPrint("And the possibilities are:");
+						debugPrintCells(possibilities);
+						debugPrint("Checking for numbers that can only be in one place:");
+					}
+					for (var region = 0; region < 9; region++) {
+						var startx = 3 * (region % 3);
+						var starty = 3 * Math.floor(region / 3);
+
+						var count = new Array(0,0,0,0,0,0,0,0,0);
+
+						for (var ry = 0; ry < 3; ry++) {
+							for (var rx = 0; rx < 3; rx++) {
+								var p = possibilities[startx+rx][starty+ry];
+								if (p != "") {
+									var p_array = p.split(",");
+									for (var i = 0; i < p_array.length; i++) {
+										var n = p_array[i];
+										if (isValidNumber(n) && (n != "")) {
+											count[n-1]++;
+										}
+									}
+								}
+							}
+						}
+
+						if (debug) {
+							debugPrint("Count["+region+"] is " + count);
+						}
+
+						for (var i = 0; i < count.length; i++) {
+							if (count[i] == 1) {
+								number_single++;
+								for (var ry = 0; ry < 3; ry++) {
+									for (var rx = 0; rx < 3; rx++) {
+										var x = startx + rx;
+										var y = starty + ry;
+										var p = possibilities[x][y];
+										if (p.indexOf(i+1) >= 0) {
+											cells[x][y] = i+1;
+											if (debug) debugPrint("cells["+x+"]["+y+"]="+(i+1));
+										}
+									}
+								}
+							}
+						}
+					}
+					if (debug) {
+						debugPrint("Found " + number_single + " such numbers.");
+						debugPrintCells(cells);
+					}
+				}
+
+				if (debug) {
+					debugPrint("Number of cells populated in this round: " + (number_found + number_single));
+				}
+
+				number_blanks = getNumberBlanks(cells);
+				if (debug) {
+					debugPrint("Number of blank cells remaining: " + number_blanks);
+				}
+
+				if (number_blanks == 0) {
+					success = true;
+				}
+
+				if ((number_found == 0) && (number_single == 0)) {
+					success = false;
+					break;
+				}
+			}
+
+			if (success) {
+				if (debug) {
+					debugPrint("--------------------------------------------------");
+					debugPrint("Found the solution in " + index + " rounds.");
+				}
+
+				// Print the solution
+				document.getElementById("title_solution").innerHTML = "<b>Solution:</b>";
+			} else {
+				if (debug) {
+					debugPrint("--------------------------------------------------");
+					debugPrint("FAILURE! Unable to find any solution. Stopped after " + index + " rounds.");
+				}
+				document.getElementById("title_solution").innerHTML = "<b style='color:crimson;'>***FAILED*** Got this far:</b>";
+			}
+
+			document.getElementById("title_problem").style.display = "block";
+			document.getElementById("title_solution").style.display = "block";
+			document.getElementById("container_solution").style.display = "block";
+			showSolution(cells);
+		}
+		function getNumberBlanks(grid)
+		{
+			var number_blanks = 0;
+			for (var x = 0; x < 9; x++) {
+				for (var y = 0; y < 9; y++) {
+					if (grid[x][y] == "") number_blanks++;
+				}
+			}
+			return number_blanks;
+		}
+		function showSolution(grid)
+		{
+			createBoard(document.getElementById("container_solution"), "solution");
+			var board = document.getElementById("solution");
+			var regions = board.getElementsByTagName("table");
+			for (var i = 0; i < regions.length; i++) {
+				var input_elements = regions[i].getElementsByTagName("input");
+				var x = 3 * (i % 3);
+				var y = 3 * Math.floor(i / 3);
+				input_elements[0].value = grid[x+0][y+0];
+				input_elements[1].value = grid[x+1][y+0];
+				input_elements[2].value = grid[x+2][y+0];
+				input_elements[3].value = grid[x+0][y+1];
+				input_elements[4].value = grid[x+1][y+1];
+				input_elements[5].value = grid[x+2][y+1];
+				input_elements[6].value = grid[x+0][y+2];
+				input_elements[7].value = grid[x+1][y+2];
+				input_elements[8].value = grid[x+2][y+2];
+			}
+		}
+		function initDebug()
+		{
+			var debug_window = document.getElementById("debug_window");
+			debug_window.innerHTML = "<div><b>Debug information:</b></div><table id='debug_table' cellspacing='0' cellpadding='3'></table>";
+			debug_window.style.display = "block";
+		}
+		function hideDebug()
+		{
+			var debug_window = document.getElementById("debug_window");
+			debug_window.innerHTML = "";
+			debug_window.style.display = "none";
+		}
+		function debugPrint(s)
+		{
+			var row = document.getElementById("debug_table").insertRow(-1);
+			var cell = row.insertCell(-1);
+			cell.innerHTML = s;
+		}
+		function debugPrintCells(grid)
+		{
+			var s = "<table border=1>";
+			for (var y = 0; y < 9; y++) {
+				s += "<tr>";
+				for (var x = 0; x < 9; x++) {
+					var value = grid[x][y];
+					value = (value == "") ? "&nbsp;" : value;
+					s += "<td width='25'>" + value + "</td>";
+				}
+				s += "</tr>";
+			}
+			s += "</table>";
+			var row = document.getElementById("debug_table").insertRow(-1);
+			var cell = row.insertCell(-1);
+			cell.innerHTML = s;
+		}
+	</script>
+</head>
+
+<body onload="init();">
+	<h1>Sudoku Solver</h1>
+
+	<table>
+	<tr valign="top">
+		<td>
+			<div id="title_problem" style="display: none;">
+				<b>Problem:</b>
+			</div>
+
+			<div id="container_problem">
+			</div>
+
+			<table style="margin-top: 10px;">
+			<tr>
+				<td>
+					<button onclick="resetBoard();">Reset</button>
+				</td>
+				<td>
+					<button onclick="showImportPanel();">Import...</button>
+				</td>
+				<td>
+					<button onclick="solve();">Solve!</button>
+				</td>
+			</tr>
+			<tr>
+				<td colspan="3">
+					<input type="checkbox" id="debug_mode"/>&nbsp;<label for="debug_mode">Explain how it's solved</label>
+				</td>
+			</tr>
+			<tr>
+				<td colspan="3">
+					<select id="sample" onchange="showSample();">
+						<option>select demo sudoku...</option>
+						<option>Easy 1</option>
+						<option>Easy 2</option>
+						<option>Hard 1</option>
+						<option>Hard 2</option>
+						<option>Hard 3</option>
+					</select>
+				</td>
+			</tr>
+			</table>
+		</td>
+		<td>
+			<div id="debug_window" style="padding-left: 20px; display: none;">
+			</div>
+		</td>
+		<td>
+			<div id="title_solution" style="padding-left: 20px; display: none;">
+			</div>
+			<div id="container_solution" style="padding-left: 20px; display: none;">
+			</div>
+
+			<div id="container_import" style="border: groove; margin-left: 20px; padding: 10px; display: none;">
+				<div>
+					<b>Import sudoku</b>
+				</div>
+				<textarea wrap="hard" rows="9" cols="20" id="board_to_import">
+				</textarea>
+				<div>
+					<small>
+						9 rows, 9 cols, use space for blanks.<br/>
+						See the source code for details.
+					</small>
+				</div>
+				<div style="padding-top: 3px;">
+					<button onclick="importBoard();">OK</button>&nbsp;
+					<button onclick="closeImportPanel();">Cancel</button>
+				</div>
+			</div>
+		</td>
+	</tr>
+	</table>
+
+	<br/>
+
+	<hr size="3" noshade width="100%"/>
+
+	<small>
+		Created in 2005 by Carl Fredrik Abelson. Licensed under <a href="http://www.gnu.org/licenses/gpl.html">GNU General Public License (GPL)</a>.<br/>
+		This game is written entirely in DHTML and JavaScript. It has been tested on Internet Explorer 5+ and Mozilla Firefox.<br/>
+		Drop me a line on <a href="mailto:abelson@ieee.org">abelson@ieee.org</a> and tell me what you think of it.
+	</small>
+
+	<br/>
+
+	<p class="todo">
+		TODO: Create a method for getting a two-dim array of all cells in a region<br/>
+		TODO: Implement the Dancing Links Algorithm, in order to solve harder sudokus<br/>
+	</p>
+</body>
+
+</head>
